@@ -1,8 +1,10 @@
-use std::net::{Ipv4Addr, SocketAddr};
 use tokio::{
     io::{AsyncReadExt, AsyncWriteExt},
     net::TcpStream,
 };
+
+const NETWORK: &str = "irc.libera.chat";
+const PORT: u16 = 6667;
 
 async fn send(stream: &mut TcpStream, message: &str) {
     stream.write(format!("{}\r\n", message).as_bytes()).await.unwrap();
@@ -10,9 +12,7 @@ async fn send(stream: &mut TcpStream, message: &str) {
 
 #[tokio::main]
 async fn main() {
-    let mut stream = TcpStream::connect(SocketAddr::from((Ipv4Addr::new(64, 86, 243, 186), 6667)))
-        .await
-        .unwrap();
+    let mut stream = TcpStream::connect((NETWORK, PORT)).await.unwrap();
 
     send(&mut stream, "NICK toot").await;
     send(&mut stream, "USER toot 0 * :toot").await;
