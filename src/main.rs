@@ -7,7 +7,10 @@ const NETWORK: &str = "irc.libera.chat";
 const PORT: u16 = 6667;
 
 async fn send(stream: &mut TcpStream, message: &str) {
-    stream.write(format!("{}\r\n", message).as_bytes()).await.unwrap();
+    stream
+        .write(format!("{}\r\n", message).as_bytes())
+        .await
+        .unwrap();
 }
 
 #[tokio::main]
