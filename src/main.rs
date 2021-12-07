@@ -32,7 +32,7 @@ async fn main() {
             .filter(|x| *x != '\0')
             .collect::<String>();
 
-        for i in 0..terminator_index + 1 {
+        for i in 0..terminator_index + 2 {
             buf[i] = 0u8;
         }
 
