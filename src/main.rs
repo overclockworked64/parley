@@ -33,7 +33,7 @@ async fn main() {
             .collect::<String>();
 
         for i in 0..terminator_index + 2 {
-            buf[i] = 0u8;
+            buf[i] = 0;
         }
 
         println!("{:?}", message);
