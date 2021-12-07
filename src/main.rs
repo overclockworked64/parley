@@ -40,7 +40,7 @@ async fn main() {
 
         if message.starts_with("PING") {
             let reply = message.replace("PING", "PONG");
-            stream.write(reply.as_bytes()).await.unwrap();
+            send(&mut stream, &reply).await;
         }
     }
 }
