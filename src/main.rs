@@ -48,7 +48,8 @@ async fn main() {
 
     loop {
         let message = recv_msg(&mut stream, &mut buf).await;
-        println!("{:?}", message);
+  
+        println!("{}", message);
 
         if message.starts_with("PING") {
             let reply = message.replace("PING", "PONG");
