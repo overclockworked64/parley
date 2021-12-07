@@ -17,6 +17,26 @@ async fn send(stream: &mut TcpStream, message: &str) {
         .unwrap();
 }
 
+async fn recv_msg(stream: &mut TcpStream, buf: &mut [u8]) -> String {
+    while !String::from_utf8(buf.to_vec()).unwrap().contains("\r\n") {
+        let _ = stream.read(buf).await.unwrap();
+    }
+
+    let chunk = String::from_utf8(buf.to_vec()).unwrap();
+    let terminator_index = chunk.find("\r\n").unwrap();
+    let message = chunk
+        .chars()
+        .take(terminator_index + TERMINATOR_LENGTH)
+        .filter(|x| *x != '\0')
+        .collect::<String>();
+
+    for i in 0..terminator_index + TERMINATOR_LENGTH {
+        buf[i] = 0;
+    }
+
+    message
+}
+
 #[tokio::main]
 async fn main() {
     let mut stream = TcpStream::connect((NETWORK, PORT)).await.unwrap();
@@ -27,22 +47,7 @@ async fn main() {
     let mut buf = [0u8; 2048];
 
     loop {
-        while !String::from_utf8(buf.to_vec()).unwrap().contains("\r\n") {
-            let _ = stream.read(&mut buf).await.unwrap();
-        }
-
-        let chunk = String::from_utf8(buf.to_vec()).unwrap();
-        let terminator_index = chunk.find("\r\n").unwrap();
-        let message = chunk
-            .chars()
-            .take(terminator_index + TERMINATOR_LENGTH)
-            .filter(|x| *x != '\0')
-            .collect::<String>();
-
-        for i in 0..terminator_index + TERMINATOR_LENGTH {
-            buf[i] = 0;
-        }
-
+        let message = recv_msg(&mut stream, &mut buf).await;
         println!("{:?}", message);
 
         if message.starts_with("PING") {
