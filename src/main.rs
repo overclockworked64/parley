@@ -4,14 +4,18 @@ use tokio::{
     net::TcpStream,
 };
 
+async fn send(stream: &mut TcpStream, message: &str) {
+    stream.write(format!("{}\r\n", message).as_bytes()).await.unwrap();
+}
+
 #[tokio::main]
 async fn main() {
     let mut stream = TcpStream::connect(SocketAddr::from((Ipv4Addr::new(64, 86, 243, 186), 6667)))
         .await
         .unwrap();
 
-    stream.write(b"NICK toot\r\n").await.unwrap();
-    stream.write(b"USER toot 0 * :toot\r\n").await.unwrap();
+    send(&mut stream, "NICK toot").await;
+    send(&mut stream, "USER toot 0 * :toot").await;
 
     let mut buf = [0u8; 2048];
 
