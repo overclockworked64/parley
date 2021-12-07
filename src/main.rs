@@ -8,6 +8,8 @@ const USER: &str = "tootz";
 const NETWORK: &str = "irc.libera.chat";
 const PORT: u16 = 6667;
 
+const TERMINATOR_LENGTH: usize = 2;
+
 async fn send(stream: &mut TcpStream, message: &str) {
     stream
         .write(format!("{}\r\n", message).as_bytes())
@@ -33,12 +35,11 @@ async fn main() {
         let terminator_index = chunk.find("\r\n").unwrap();
         let message = chunk
             .chars()
-            .take(terminator_index + 2) // 2 is the length of the terminator in chars
+            .take(terminator_index + TERMINATOR_LENGTH)
             .filter(|x| *x != '\0')
             .collect::<String>();
 
-        // 2 is the length of the terminator in chars
-        for i in 0..terminator_index + 2 {
+        for i in 0..terminator_index + TERMINATOR_LENGTH {
             buf[i] = 0;
         }
 
