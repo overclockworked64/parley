@@ -11,10 +11,9 @@ const PORT: u16 = 6667;
 const TERMINATOR_LENGTH: usize = 2;
 
 async fn send(stream: &mut TcpStream, message: &str) {
-    stream
-        .write(format!("{}\r\n", message).as_bytes())
-        .await
-        .unwrap();
+    if let Err(e) = stream.write(format!("{}\r\n", message).as_bytes()).await {
+        eprintln!("writing to stream failed: {}", e);
+    }
 }
 
 async fn recv_msg(stream: &mut TcpStream, buf: &mut [u8]) -> String {
@@ -48,7 +47,7 @@ async fn main() {
 
     loop {
         let message = recv_msg(&mut stream, &mut buf).await;
-  
+
         println!("{}", message);
 
         if message.starts_with("PING") {
