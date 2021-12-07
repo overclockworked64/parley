@@ -33,10 +33,11 @@ async fn main() {
         let terminator_index = chunk.find("\r\n").unwrap();
         let message = chunk
             .chars()
-            .take(terminator_index + 2)
+            .take(terminator_index + 2) // 2 is the length of the terminator in chars
             .filter(|x| *x != '\0')
             .collect::<String>();
 
+        // 2 is the length of the terminator in chars
         for i in 0..terminator_index + 2 {
             buf[i] = 0;
         }
