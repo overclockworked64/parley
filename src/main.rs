@@ -19,7 +19,7 @@ async fn main() {
         while !String::from_utf8(buf.to_vec()).unwrap().contains("\r\n") {
             let _ = stream.read(&mut buf).await.unwrap();
         }
-        
+
         let chunk = String::from_utf8(buf.to_vec()).unwrap();
         let terminator_index = chunk.find("\r\n").unwrap();
         let message = chunk
@@ -35,10 +35,8 @@ async fn main() {
         println!("{:?}", message);
 
         if message.starts_with("PING") {
-            stream
-                .write(message.replace("PING", "PONG").as_bytes())
-                .await
-                .unwrap();
+            let reply = message.replace("PING", "PONG");
+            stream.write(reply.as_bytes()).await.unwrap();
         }
     }
 }
