@@ -11,7 +11,8 @@ const PORT: u16 = 6667;
 const TERMINATOR_LENGTH: usize = 2;
 
 async fn send(stream: &mut TcpStream, message: &str) {
-    if let Err(e) = stream.write(format!("{}\r\n", message).as_bytes()).await {
+    let msg = format!("{}\r\n", message);
+    if let Err(e) = stream.write(msg.as_bytes()).await {
         eprintln!("writing to stream failed: {}", e);
     }
 }
