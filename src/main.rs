@@ -3,6 +3,8 @@ use tokio::{
     net::TcpStream,
 };
 
+const NICK: &str = "toot";
+const USER: &str = "tootz";
 const NETWORK: &str = "irc.libera.chat";
 const PORT: u16 = 6667;
 
@@ -17,8 +19,8 @@ async fn send(stream: &mut TcpStream, message: &str) {
 async fn main() {
     let mut stream = TcpStream::connect((NETWORK, PORT)).await.unwrap();
 
-    send(&mut stream, "NICK toot").await;
-    send(&mut stream, "USER toot 0 * :toot").await;
+    send(&mut stream, format!("NICK {}", NICK).as_str()).await;
+    send(&mut stream, format!("USER {} 0 * :{}", USER, USER).as_str()).await;
 
     let mut buf = [0u8; 2048];
 
