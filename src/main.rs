@@ -19,15 +19,19 @@ async fn send(stream: &mut WriteHalf<'_>, message: &str) {
 }
 
 async fn recv_msg(reader: &mut BufReader<ReadHalf<'_>>, buf: &mut Vec<u8>) -> Option<String> {
-    if let Err(e) = reader.read_until(b'\n', buf).await {
-        eprintln!("reading from stream failed: {}", e);
+    let msg = match reader.read_until(b'\n', buf).await {
+        Ok(_) => {
+            let m = String::from_utf8(buf.to_vec()).unwrap();
 
-        None
-    } else {
-        let msg = String::from_utf8(buf.to_vec()).unwrap();
+            Some(m.trim().to_owned())
+        },
+        Err(e) => {
+            eprintln!("reading from stream failed: {}", e);
 
-        Some(msg.trim().to_owned())
-    }
+            None
+        },
+    };
+    msg
 }
 
 #[tokio::main]
