@@ -1,5 +1,5 @@
 use tokio::{
-    io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
+    io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter},
     net::{
         tcp::{ReadHalf, WriteHalf},
         TcpStream,
@@ -11,9 +11,9 @@ const USER: &str = "tootz";
 const NETWORK: &str = "irc.libera.chat";
 const PORT: u16 = 6667;
 
-async fn send(stream: &mut WriteHalf<'_>, message: &str) {
+async fn send(writer: &mut BufWriter<WriteHalf<'_>>, message: &str) {
     let msg = format!("{}\r\n", message);
-    if let Err(e) = stream.write(msg.as_bytes()).await {
+    if let Err(e) = writer.write(msg.as_bytes()).await {
         eprintln!("writing to stream failed: {}", e);
     }
 }
@@ -24,12 +24,12 @@ async fn recv_msg(reader: &mut BufReader<ReadHalf<'_>>, buf: &mut Vec<u8>) -> Op
             let m = String::from_utf8(buf.to_vec()).unwrap();
 
             Some(m.trim().to_owned())
-        },
+        }
         Err(e) => {
             eprintln!("reading from stream failed: {}", e);
 
             None
-        },
+        }
     };
     msg
 }
@@ -37,13 +37,13 @@ async fn recv_msg(reader: &mut BufReader<ReadHalf<'_>>, buf: &mut Vec<u8>) -> Op
 #[tokio::main]
 async fn main() {
     let mut stream = TcpStream::connect((NETWORK, PORT)).await.unwrap();
-    let (rx, mut tx) = stream.split();
-
-    send(&mut tx, format!("NICK {}", NICK).as_str()).await;
-    send(&mut tx, format!("USER {} 0 * :{}", USER, USER).as_str()).await;
-
     let mut buf = vec![0u8; 8192];
+    let (rx, tx) = stream.split();
+    let mut writer = BufWriter::new(tx);
     let mut reader = BufReader::new(rx);
+
+    send(&mut writer, format!("NICK {}", NICK).as_str()).await;
+    send(&mut writer, format!("USER {} 0 * :{}", USER, USER).as_str()).await;
 
     loop {
         buf.clear();
@@ -53,7 +53,7 @@ async fn main() {
 
             if message.starts_with("PING") {
                 let reply = message.replace("PING", "PONG");
-                send(&mut tx, &reply).await;
+                send(&mut writer, &reply).await;
             }
         }
     }
