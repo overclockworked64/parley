@@ -31,6 +31,11 @@ async fn join(stream: &mut WriteHalf<'_>, channel: &str) {
     send(stream, format!("JOIN {}", channel).as_str()).await;
 }
 
+async fn part(stream: &mut WriteHalf<'_>, channel: &str) {
+    send(stream, format!("PART {}", channel).as_str()).await;
+}
+
+
 async fn send(stream: &mut WriteHalf<'_>, message: &str) {
     let msg = format!("{}\r\n", message);
     if let Err(e) = stream.write(msg.as_bytes()).await {
@@ -86,6 +91,10 @@ async fn main() {
                 if command.starts_with("!join") {
                     let channel = command.split(" ").nth(1).unwrap();
                     join(&mut tx, channel).await;
+                }
+                if command.starts_with("!part") {
+                    let channel = command.split(" ").nth(1).unwrap();
+                    part(&mut tx, channel).await;
                 }
             }
         }
