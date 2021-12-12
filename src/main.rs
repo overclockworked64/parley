@@ -11,10 +11,24 @@ const USER: &str = "tootz";
 const NETWORK: &str = "irc.libera.chat";
 const PORT: u16 = 6667;
 
-const COMMANDER: &str = "xvm`!~xvm@user/xvm";
+struct Commander {
+    nick: String,
+    ident: String,
+    vhost: String,
+}
+
+impl Commander {
+    fn new(nick: String, ident: String, vhost: String) -> Commander {
+        Commander { nick, ident, vhost }
+    }
+
+    fn to_string(&self) -> String {
+        format!("{}!~{}@{}", self.nick, self.ident, self.vhost)
+    }
+}
 
 async fn join(stream: &mut WriteHalf<'_>, channel: &str) {
-    send(stream, format!("JOIN {}", channel).as_str()).await;    
+    send(stream, format!("JOIN {}", channel).as_str()).await;
 }
 
 async fn send(stream: &mut WriteHalf<'_>, message: &str) {
@@ -47,6 +61,12 @@ async fn main() {
     let (rx, mut tx) = stream.split();
     let mut reader = BufReader::new(rx);
 
+    let commander = Commander::new(
+        "xvm`".to_string(),
+        "xvm".to_string(),
+        "user/xvm".to_string(),
+    );
+
     send(&mut tx, format!("NICK {}", NICK).as_str()).await;
     send(&mut tx, format!("USER {} 0 * :{}", USER, USER).as_str()).await;
 
@@ -61,7 +81,7 @@ async fn main() {
                 send(&mut tx, &reply).await;
             }
 
-            if message.starts_with(format!(":{}", COMMANDER).as_str()) {
+            if message.starts_with(format!(":{}", commander.to_string()).as_str()) {
                 let command = message.split(":").nth(2).unwrap();
                 if command.starts_with("!join") {
                     let channel = command.split(" ").nth(1).unwrap();
