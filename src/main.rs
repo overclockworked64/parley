@@ -27,6 +27,53 @@ impl Commander {
     }
 }
 
+struct Message {
+    sender: Option<String>,
+    command: String,
+    parameters: Vec<String>,
+}
+
+impl Message {
+    fn new(sender: Option<String>, command: String, parameters: Vec<String>) -> Message {
+        Message {
+            sender,
+            command,
+            parameters,
+        }
+    }
+}
+
+fn parse_msg(message: String) -> Message {
+    let m = message
+        .split_whitespace()
+        .map(|x| x.to_owned())
+        .collect::<Vec<String>>();
+
+    let (sender, command, parameters) = if message.starts_with(':') {
+        let sender = Some(
+            m.clone()
+                .into_iter()
+                .nth(0)
+                .unwrap()
+                .chars()
+                .skip(1)
+                .collect(),
+        );
+        let command = m.clone().into_iter().nth(1).unwrap();
+        let parameters = m.into_iter().skip(2).collect::<Vec<String>>();
+
+        (sender, command, parameters)
+    } else {
+        let sender = None;
+        let command = m.clone().into_iter().nth(0).unwrap();
+        let parameters = m.into_iter().skip(1).collect::<Vec<String>>();
+
+        (sender, command, parameters)
+    };
+
+    Message::new(sender, command, parameters)
+}
+
 async fn join(stream: &mut WriteHalf<'_>, channel: &str) {
     send(stream, format!("JOIN {}", channel).as_str()).await;
 }
@@ -100,51 +147,4 @@ async fn main() {
             }
         }
     }
-}
-
-struct Message {
-    sender: Option<String>,
-    command: String,
-    parameters: Vec<String>,
-}
-
-impl Message {
-    fn new(sender: Option<String>, command: String, parameters: Vec<String>) -> Message {
-        Message {
-            sender,
-            command,
-            parameters,
-        }
-    }
-}
-
-fn parse_msg(message: String) -> Message {
-    let m = message
-        .split_whitespace()
-        .map(|x| x.to_owned())
-        .collect::<Vec<String>>();
-
-    let (sender, command, parameters) = if message.starts_with(':') {
-        let sender = Some(
-            m.clone()
-                .into_iter()
-                .nth(0)
-                .unwrap()
-                .chars()
-                .skip(1)
-                .collect(),
-        );
-        let command = m.clone().into_iter().nth(1).unwrap();
-        let parameters = m.into_iter().skip(2).collect::<Vec<String>>();
-
-        (sender, command, parameters)
-    } else {
-        let sender = None;
-        let command = m.clone().into_iter().nth(0).unwrap();
-        let parameters = m.into_iter().skip(1).collect::<Vec<String>>();
-
-        (sender, command, parameters)
-    };
-
-    Message::new(sender, command, parameters)
 }
