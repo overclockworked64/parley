@@ -35,7 +35,6 @@ async fn part(stream: &mut WriteHalf<'_>, channel: &str) {
     send(stream, format!("PART {}", channel).as_str()).await;
 }
 
-
 async fn send(stream: &mut WriteHalf<'_>, message: &str) {
     let msg = format!("{}\r\n", message);
     if let Err(e) = stream.write(msg.as_bytes()).await {
