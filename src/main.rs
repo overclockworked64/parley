@@ -13,13 +13,13 @@ const PORT: u16 = 6667;
 
 const COMMANDER: &str = "xvm`!~xvm@user/xvm";
 
-async fn join(writer: &mut WriteHalf<'_>, channel: &str) {
-    send(writer, format!("JOIN {}", channel).as_str()).await;    
+async fn join(stream: &mut WriteHalf<'_>, channel: &str) {
+    send(stream, format!("JOIN {}", channel).as_str()).await;    
 }
 
-async fn send(writer: &mut WriteHalf<'_>, message: &str) {
+async fn send(stream: &mut WriteHalf<'_>, message: &str) {
     let msg = format!("{}\r\n", message);
-    if let Err(e) = writer.write(msg.as_bytes()).await {
+    if let Err(e) = stream.write(msg.as_bytes()).await {
         eprintln!("writing to stream failed: {}", e);
     }
 }
