@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     net::{
@@ -11,19 +12,27 @@ const USER: &str = "tootz";
 const NETWORK: &str = "irc.libera.chat";
 const PORT: u16 = 6667;
 
-struct Commander {
-    nick: String,
-    ident: String,
-    vhost: String,
+#[derive(Clone, PartialEq)]
+struct User {
+    nick: Option<String>,
+    ident: Option<String>,
+    vhost: Option<String>,
+    server: bool,
 }
 
-impl Commander {
-    fn new(nick: String, ident: String, vhost: String) -> Commander {
-        Commander { nick, ident, vhost }
-    }
-
-    fn to_string(&self) -> String {
-        format!("{}!~{}@{}", self.nick, self.ident, self.vhost)
+impl User {
+    fn new(
+        nick: Option<String>,
+        ident: Option<String>,
+        vhost: Option<String>,
+        server: bool,
+    ) -> User {
+        User {
+            nick,
+            ident,
+            vhost,
+            server,
+        }
     }
 }
 
@@ -33,13 +42,13 @@ struct CommanderOrder {
 }
 
 struct Message {
-    sender: Option<String>,
+    sender: Option<User>,
     command: String,
     parameters: Vec<String>,
 }
 
 impl Message {
-    fn new(sender: Option<String>, command: String, parameters: Vec<String>) -> Message {
+    fn new(sender: Option<User>, command: String, parameters: Vec<String>) -> Message {
         Message {
             sender,
             command,
@@ -49,18 +58,64 @@ impl Message {
 }
 
 fn parse_msg(message: String) -> Message {
+    /*
+    We start with something like this:
+
+    :strontium.libera.chat NOTICE * :*** Checking Ident
+
+    */
     let m = message
         .split_whitespace()
         .map(|x| x.to_owned())
         .collect::<Vec<String>>();
-
     let (sender, command, parameters) = if message.starts_with(':') {
-        let sender = Some(m[0].strip_prefix(':').unwrap().to_owned());
+        /*
+        Then we split on whitespace and we have:
+
+        [":strontium.libera.chat", "NOTICE", "*", ":***", "Checking", "Ident"]
+
+        */
+
+        // Let's first parse the sender
+
+        let sender = &m[0];
+
+        let sender = if sender.contains('!') {
+            // message from the user
+            // let's get nick, ident, and vhost
+            let s = sender
+                .strip_prefix(':')
+                .unwrap()
+                .split('!')
+                .map(|x| x.to_owned())
+                .collect::<Vec<String>>();
+
+            /*
+            Now we have this:
+
+            ["xvm`", "~xvm@user/xvm PRIVMSG toot :", "part ##toottoot"]
+            */
+
+            let nick = &s[0];
+            let (ident, vhost) = s[1].split('@').collect_tuple().unwrap();
+
+            User::new(
+                Some(nick.to_owned()),
+                Some(ident.to_owned()),
+                Some(vhost.to_owned()),
+                false,
+            )
+        } else {
+            // message from the server
+            User::new(None, None, None, true)
+        };
+
         let command = &m[1];
         let parameters = &m[2..];
 
-        (sender, command.to_owned(), parameters.to_vec())
+        (Some(sender), command.to_owned(), parameters.to_vec())
     } else {
+        // PING-like message
         let sender = None;
         let command = &m[0];
         let parameters = &m[1..];
@@ -119,10 +174,11 @@ async fn main() {
     let (rx, mut tx) = stream.split();
     let mut reader = BufReader::new(rx);
 
-    let commander = Commander::new(
-        "xvm`".to_string(),
-        "xvm".to_string(),
-        "user/xvm".to_string(),
+    let commander = User::new(
+        Some("xvm`".to_string()),
+        Some("~xvm".to_string()),
+        Some("user/xvm".to_string()),
+        false,
     );
 
     send(&mut tx, format!("NICK {}", NICK).as_str()).await;
@@ -141,7 +197,7 @@ async fn main() {
                 send(&mut tx, &reply).await;
             }
 
-            if msg.sender == Some(commander.to_string()) {
+            if msg.sender == Some(commander.clone()) {
                 let CommanderOrder {
                     command,
                     parameters,
