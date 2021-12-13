@@ -55,11 +55,7 @@ fn parse_msg(message: String) -> Message {
         .collect::<Vec<String>>();
 
     let (sender, command, parameters) = if message.starts_with(':') {
-        let sender = Some(
-            m[0].strip_prefix(':')
-                .unwrap()
-                .to_owned()
-        );
+        let sender = Some(m[0].strip_prefix(':').unwrap().to_owned());
         let command = &m[1];
         let parameters = &m[2..];
 
@@ -146,7 +142,10 @@ async fn main() {
             }
 
             if msg.sender == Some(commander.to_string()) {
-                let CommanderOrder { command, parameters } = parse_order(msg.parameters);
+                let CommanderOrder {
+                    command,
+                    parameters,
+                } = parse_order(msg.parameters);
 
                 match command.as_str() {
                     "!join" => join(&mut tx, &parameters[0]).await,
