@@ -59,43 +59,46 @@ impl Message {
 
 fn parse_msg(message: String) -> Message {
     /*
-    We start with something like this:
+    We either get something like:
 
-    :strontium.libera.chat NOTICE * :*** Checking Ident
+        [1]: `:strontium.libera.chat NOTICE * :*** Checking Ident` or
+        [2]: `:xvm`!~xvm@user/xvm PRIVMSG toot :!join ##toottoot` or
+        [3]: `PING :iridium.libera.chat`
 
+    Then we split on whitespace and we have, for example:
+
+        [":strontium.libera.chat", "NOTICE", "*", ":***", "Checking", "Ident"]
+
+    If the message starts with ':' (colon), it means it's either
+
+        [1]: from the server (if it does not contain '!')
+        [2]: a regular message from another user (if it contains '!')
+    
+    If the message does not start with a colon, it's a PING-like message.
+    TODO: check what other messages do not start with a colon
     */
     let m = message
         .split_whitespace()
         .map(|x| x.to_owned())
         .collect::<Vec<String>>();
+
     let (sender, command, parameters) = if message.starts_with(':') {
-        /*
-        Then we split on whitespace and we have:
-
-        [":strontium.libera.chat", "NOTICE", "*", ":***", "Checking", "Ident"]
-
-        */
-
-        // Let's first parse the sender
-
+        // First parse the sender
         let sender = &m[0];
 
         let sender = if sender.contains('!') {
-            // message from the user
-            // let's get nick, ident, and vhost
+            // The message contains '!', so we attempt to parse the nick, ident, and vhost
             let s = sender
                 .strip_prefix(':')
                 .unwrap()
                 .split('!')
                 .map(|x| x.to_owned())
                 .collect::<Vec<String>>();
-
             /*
             Now we have this:
 
-            ["xvm`", "~xvm@user/xvm PRIVMSG toot :", "part ##toottoot"]
+                ["xvm`", "~xvm@user/xvm PRIVMSG toot :", "!join ##toottoot"]
             */
-
             let nick = &s[0];
             let (ident, vhost) = s[1].split('@').collect_tuple().unwrap();
 
@@ -106,7 +109,7 @@ fn parse_msg(message: String) -> Message {
                 false,
             )
         } else {
-            // message from the server
+            // The message does not contain '!', meaning it's from the server
             User::new(None, None, None, true)
         };
 
