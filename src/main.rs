@@ -17,7 +17,7 @@ struct User {
     nick: Option<String>,
     ident: Option<String>,
     vhost: Option<String>,
-    server: bool,
+    is_server: bool,
 }
 
 impl User {
@@ -25,13 +25,13 @@ impl User {
         nick: Option<String>,
         ident: Option<String>,
         vhost: Option<String>,
-        server: bool,
+        is_server: bool,
     ) -> User {
         User {
             nick,
             ident,
             vhost,
-            server,
+            is_server,
         }
     }
 }
