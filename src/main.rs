@@ -29,7 +29,7 @@ impl Commander {
 
 struct CommanderOrder {
     command: String,
-    parameter: String,
+    parameters: Vec<String>,
 }
 
 struct Message {
@@ -79,14 +79,13 @@ fn parse_msg(message: String) -> Message {
     Message::new(sender, command, parameters)
 }
 
-fn parse_order(message: String) -> CommanderOrder {
-    let msg = message.split(":").nth(2).unwrap().split_whitespace();
-    let command = msg.clone().nth(0).unwrap().to_string();
-    let parameter = msg.clone().nth(1).unwrap().to_string();
+fn parse_order(message: Vec<String>) -> CommanderOrder {
+    let command = message.clone().into_iter().nth(1).unwrap().chars().skip(1).collect();
+    let parameters = message.into_iter().skip(2).collect();
 
     CommanderOrder {
         command,
-        parameter,
+        parameters,
     }
 }
 
@@ -151,11 +150,11 @@ async fn main() {
             }
 
             if msg.sender == Some(commander.to_string()) {
-                let CommanderOrder { command, parameter } = parse_order(message.clone());
+                let CommanderOrder { command, parameters } = parse_order(msg.parameters);
 
                 match command.as_str() {
-                    "!join" => join(&mut tx, &parameter).await,
-                    "!part" => part(&mut tx, &parameter).await,
+                    "!join" => join(&mut tx, &parameters[0]).await,
+                    "!part" => part(&mut tx, &parameters[0]).await,
                     _ => unimplemented!(),
                 }
             }
