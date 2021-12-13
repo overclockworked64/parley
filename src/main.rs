@@ -27,6 +27,11 @@ impl Commander {
     }
 }
 
+struct CommanderOrder {
+    command: String,
+    parameter: String,
+}
+
 struct Message {
     sender: Option<String>,
     command: String,
@@ -72,6 +77,17 @@ fn parse_msg(message: String) -> Message {
     };
 
     Message::new(sender, command, parameters)
+}
+
+fn parse_order(message: String) -> CommanderOrder {
+    let msg = message.split(":").nth(2).unwrap().split_whitespace();
+    let command = msg.clone().nth(0).unwrap().to_string();
+    let parameter = msg.clone().nth(1).unwrap().to_string();
+
+    CommanderOrder {
+        command,
+        parameter,
+    }
 }
 
 async fn join(stream: &mut WriteHalf<'_>, channel: &str) {
@@ -135,14 +151,12 @@ async fn main() {
             }
 
             if msg.sender == Some(commander.to_string()) {
-                let command = message.split(":").nth(2).unwrap();
-                if command.starts_with("!join") {
-                    let channel = command.split(" ").nth(1).unwrap();
-                    join(&mut tx, channel).await;
-                }
-                if command.starts_with("!part") {
-                    let channel = command.split(" ").nth(1).unwrap();
-                    part(&mut tx, channel).await;
+                let CommanderOrder { command, parameter } = parse_order(message.clone());
+
+                match command.as_str() {
+                    "!join" => join(&mut tx, &parameter).await,
+                    "!part" => part(&mut tx, &parameter).await,
+                    _ => unimplemented!(),
                 }
             }
         }
