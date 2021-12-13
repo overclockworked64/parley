@@ -56,36 +56,32 @@ fn parse_msg(message: String) -> Message {
 
     let (sender, command, parameters) = if message.starts_with(':') {
         let sender = Some(
-            m.clone()
-                .into_iter()
-                .nth(0)
+            m[0].strip_prefix(':')
                 .unwrap()
-                .chars()
-                .skip(1)
-                .collect(),
+                .to_owned()
         );
-        let command = m.clone().into_iter().nth(1).unwrap();
-        let parameters = m.into_iter().skip(2).collect::<Vec<String>>();
+        let command = &m[1];
+        let parameters = &m[2..];
 
-        (sender, command, parameters)
+        (sender, command.to_owned(), parameters.to_vec())
     } else {
         let sender = None;
-        let command = m.clone().into_iter().nth(0).unwrap();
-        let parameters = m.into_iter().skip(1).collect::<Vec<String>>();
+        let command = &m[0];
+        let parameters = &m[1..];
 
-        (sender, command, parameters)
+        (sender, command.to_owned(), parameters.to_vec())
     };
 
     Message::new(sender, command, parameters)
 }
 
 fn parse_order(message: Vec<String>) -> CommanderOrder {
-    let command = message.clone().into_iter().nth(1).unwrap().chars().skip(1).collect();
-    let parameters = message.into_iter().skip(2).collect();
+    let command = message[1].strip_prefix(':').unwrap().to_owned();
+    let parameters = &message[2..];
 
     CommanderOrder {
         command,
-        parameters,
+        parameters: parameters.to_vec(),
     }
 }
 
