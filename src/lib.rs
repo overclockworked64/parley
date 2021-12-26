@@ -1,3 +1,8 @@
+use std::collections::HashMap;
+use futures::future::{BoxFuture, FutureExt};
+
+
+use futures::Future;
 use itertools::Itertools;
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
@@ -52,7 +57,26 @@ impl Message {
     }
 }
 
-pub async fn mainloop<'a>(rx: ReadHalf<'a>, tx: &mut WriteHalf<'a>) {
+type AsyncCallback<'a, 'wh> = Box<dyn Fn(&'a mut WriteHalf<'wh>) -> BoxFuture<'wh, ()>>;
+
+#[derive(Default)]
+pub struct AsyncCallbacks<'a, 'wh>(HashMap<&'static str, AsyncCallback<'a, 'wh>>);
+
+impl<'a, 'wh> AsyncCallbacks<'a, 'wh> {
+    pub fn insert<F, Fut>(&mut self, k: &'static str, f: F)
+    where
+        F: Fn(&'a mut WriteHalf<'wh>) -> Fut + Send + 'static,
+        Fut: Future<Output = ()> + 'wh + Send,
+    {
+        self.0.insert(k, Box::new(move |wh| f(wh).boxed()));
+    }
+}
+
+pub async fn mainloop(
+    rx: ReadHalf<'_>,
+    tx: &mut WriteHalf<'_>,
+    callbacks: AsyncCallbacks<'_, '_>,
+) {
     let mut buf = vec![0u8; 8192];
 
     let mut reader = BufReader::new(rx);
@@ -83,11 +107,17 @@ pub async fn mainloop<'a>(rx: ReadHalf<'a>, tx: &mut WriteHalf<'a>) {
                     parameters,
                 } = parse_order(msg.parameters);
 
-                match command.as_str() {
-                    "!join" => join( tx, &parameters[0]).await,
-                    "!part" => part( tx, &parameters[0]).await,
-                    _ => unimplemented!(),
+                for (trigger, callback) in callbacks.0.iter() {
+                    if *trigger == command {
+                        callback(tx).await;
+                    }
                 }
+
+                // match command.as_str() {
+                //     "!join" => join( tx, &parameters[0]).await,
+                //     "!part" => part( tx, &parameters[0]).await,
+                //     _ => unimplemented!(),
+                // }
             }
         }
     }
