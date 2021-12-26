@@ -1,8 +1,11 @@
+use futures::future::BoxFuture;
+use std::collections::HashMap;
+
 use itertools::Itertools;
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     net::{
-        tcp::{ReadHalf, WriteHalf},
+        tcp::{OwnedReadHalf, OwnedWriteHalf},
         TcpStream,
     },
 };
@@ -52,174 +55,205 @@ impl Message {
     }
 }
 
-pub async fn mainloop<'a>(rx: ReadHalf<'a>, tx: &mut WriteHalf<'a>) {
-    let mut buf = vec![0u8; 8192];
+pub struct Robot {
+    tx: Option<OwnedWriteHalf>,
+    reader: Option<BufReader<OwnedReadHalf>>,
+}
 
-    let mut reader = BufReader::new(rx);
+impl Robot {
+    pub fn new() -> Robot {
+        Robot {
+            tx: None,
+            reader: None,
+        }
+    }
 
-    let commander = User::new(
-        Some("xvm`".to_string()),
-        Some("~xvm".to_string()),
-        Some("user/xvm".to_string()),
-        false,
-    );
+    pub async fn connect(
+        &mut self,
+        network: &str,
+        port: u16,
+        nick: &str,
+        user: &str,
+        realname: &str,
+    ) {
+        let stream = TcpStream::connect((network, port)).await.unwrap();
 
-    loop {
-        buf.clear();
+        let (rx, tx) = stream.into_split();
+        let reader = BufReader::new(rx);
 
-        if let Some(message) = recv_msg(&mut reader, &mut buf).await {
-            println!("{}", message);
+        self.tx = Some(tx);
+        self.reader = Some(reader);
 
-            let msg = parse_msg(message.clone());
+        self.send(format!("NICK {}", nick).as_str()).await;
+        self.send(format!("USER {} 0 * :{}", user, realname).as_str())
+            .await;
+    }
 
-            if msg.sender.is_none() && msg.command == "PING" {
-                let reply = message.replace("PING", "PONG");
-                send(tx, &reply).await;
-            }
+    pub async fn send(&mut self, message: &str) {
+        let msg = format!("{}\r\n", message);
 
-            if msg.sender == Some(commander.clone()) {
-                let CommanderOrder {
-                    command,
-                    parameters,
-                } = parse_order(msg.parameters);
+        match self.tx.as_mut().unwrap().write(msg.as_bytes()).await {
+            Ok(bytes_written) => println!("{}", bytes_written),
+            Err(e) => eprintln!("writing to stream failed: {}", e),
+        }
+    }
 
-                match command.as_str() {
-                    "!join" => join( tx, &parameters[0]).await,
-                    "!part" => part( tx, &parameters[0]).await,
-                    _ => unimplemented!(),
+    pub async fn mainloop(&mut self, callbacks: AsyncCallbacks) {
+        let mut buf = vec![0u8; 8192];
+
+        let commander = User::new(
+            Some("xvm`".to_string()),
+            Some("~xvm".to_string()),
+            Some("user/xvm".to_string()),
+            false,
+        );
+
+        loop {
+            buf.clear();
+
+            if let Some(message) = self.recv_msg(&mut buf).await {
+                println!("{}", message);
+
+                let msg = self.parse_msg(message.clone());
+
+                if msg.sender.is_none() && msg.command == "PING" {
+                    let reply = message.replace("PING", "PONG");
+                    self.send(&reply).await;
+                }
+
+                if msg.sender == Some(commander.clone()) {
+                    let CommanderOrder {
+                        command,
+                        parameters,
+                    } = self.parse_order(msg.parameters);
+
+                    for (callback_cmd, callback) in callbacks.0.iter() {
+                        if command == *callback_cmd {
+                            callback(self, parameters[0].to_owned()).await;
+                        }
+                    }
                 }
             }
         }
     }
-}
 
-pub async fn connect(
-    network: &str,
-    port: u16,
-    nick: &str,
-    user: &str,
-    realname: &str,
-) -> TcpStream {
-    let mut stream = TcpStream::connect((network, port)).await.unwrap();
+    async fn recv_msg(&mut self, buf: &mut Vec<u8>) -> Option<String> {
+        let msg = match self.reader.as_mut().unwrap().read_until(b'\n', buf).await {
+            Ok(_) => {
+                let m = String::from_utf8(buf.to_vec()).unwrap();
 
-    let (_rx, mut tx) = stream.split();
+                Some(m.trim().to_owned())
+            }
+            Err(e) => {
+                eprintln!("reading from stream failed: {}", e);
 
-    send(&mut tx, format!("NICK {}", nick).as_str()).await;
-    send(&mut tx, format!("USER {} 0 * :{}", user, realname).as_str()).await;
-
-    stream
-}
-
-pub async fn join(stream: &mut WriteHalf<'_>, channel: &str) {
-    send(stream, format!("JOIN {}", channel).as_str()).await;
-}
-
-pub async fn part(stream: &mut WriteHalf<'_>, channel: &str) {
-    send(stream, format!("PART {}", channel).as_str()).await;
-}
-
-pub async fn send(stream: &mut WriteHalf<'_>, message: &str) {
-    let msg = format!("{}\r\n", message);
-    if let Err(e) = stream.write(msg.as_bytes()).await {
-        eprintln!("writing to stream failed: {}", e);
+                None
+            }
+        };
+        msg
     }
-}
 
-async fn recv_msg(reader: &mut BufReader<ReadHalf<'_>>, buf: &mut Vec<u8>) -> Option<String> {
-    let msg = match reader.read_until(b'\n', buf).await {
-        Ok(_) => {
-            let m = String::from_utf8(buf.to_vec()).unwrap();
+    fn parse_msg(&self, message: String) -> Message {
+        /*
+        We either get something like:
 
-            Some(m.trim().to_owned())
-        }
-        Err(e) => {
-            eprintln!("reading from stream failed: {}", e);
+            [1]: `:strontium.libera.chat NOTICE * :*** Checking Ident` or
+            [2]: `:xvm`!~xvm@user/xvm PRIVMSG toot :!join ##toottoot` or
+            [3]: `PING :iridium.libera.chat`
 
-            None
-        }
-    };
-    msg
-}
+        Then we split on whitespace and we have, for example:
 
-fn parse_msg(message: String) -> Message {
-    /*
-    We either get something like:
+            [":strontium.libera.chat", "NOTICE", "*", ":***", "Checking", "Ident"]
 
-        [1]: `:strontium.libera.chat NOTICE * :*** Checking Ident` or
-        [2]: `:xvm`!~xvm@user/xvm PRIVMSG toot :!join ##toottoot` or
-        [3]: `PING :iridium.libera.chat`
+        If the message starts with ':' (colon), it means it's either
 
-    Then we split on whitespace and we have, for example:
+            [1]: from the server (if it does not contain '!')
+            [2]: a regular message from another user (if it contains '!')
 
-        [":strontium.libera.chat", "NOTICE", "*", ":***", "Checking", "Ident"]
+        If the message does not start with a colon, it's a PING-like message.
+        TODO: check what other messages do not start with a colon
+        */
+        let m = message
+            .split_whitespace()
+            .map(|x| x.to_owned())
+            .collect::<Vec<String>>();
 
-    If the message starts with ':' (colon), it means it's either
+        let (sender, command, parameters) = if message.starts_with(':') {
+            // First parse the sender
+            let sender = &m[0];
 
-        [1]: from the server (if it does not contain '!')
-        [2]: a regular message from another user (if it contains '!')
-    
-    If the message does not start with a colon, it's a PING-like message.
-    TODO: check what other messages do not start with a colon
-    */
-    let m = message
-        .split_whitespace()
-        .map(|x| x.to_owned())
-        .collect::<Vec<String>>();
+            let sender = if sender.contains('!') {
+                // The message contains '!', so we attempt to parse the nick, ident, and vhost
+                let s = sender
+                    .strip_prefix(':')
+                    .unwrap()
+                    .split('!')
+                    .map(|x| x.to_owned())
+                    .collect::<Vec<String>>();
+                /*
+                Now we have this:
 
-    let (sender, command, parameters) = if message.starts_with(':') {
-        // First parse the sender
-        let sender = &m[0];
+                    ["xvm`", "~xvm@user/xvm PRIVMSG toot :", "!join ##toottoot"]
+                */
+                let nick = &s[0];
+                let (ident, vhost) = s[1].split('@').collect_tuple().unwrap();
 
-        let sender = if sender.contains('!') {
-            // The message contains '!', so we attempt to parse the nick, ident, and vhost
-            let s = sender
-                .strip_prefix(':')
-                .unwrap()
-                .split('!')
-                .map(|x| x.to_owned())
-                .collect::<Vec<String>>();
-            /*
-            Now we have this:
+                User::new(
+                    Some(nick.to_owned()),
+                    Some(ident.to_owned()),
+                    Some(vhost.to_owned()),
+                    false,
+                )
+            } else {
+                // The message does not contain '!', meaning it's from the server
+                User::new(None, None, None, true)
+            };
 
-                ["xvm`", "~xvm@user/xvm PRIVMSG toot :", "!join ##toottoot"]
-            */
-            let nick = &s[0];
-            let (ident, vhost) = s[1].split('@').collect_tuple().unwrap();
+            let command = &m[1];
+            let parameters = &m[2..];
 
-            User::new(
-                Some(nick.to_owned()),
-                Some(ident.to_owned()),
-                Some(vhost.to_owned()),
-                false,
-            )
+            (Some(sender), command.to_owned(), parameters.to_vec())
         } else {
-            // The message does not contain '!', meaning it's from the server
-            User::new(None, None, None, true)
+            // PING-like message
+            let sender = None;
+            let command = &m[0];
+            let parameters = &m[1..];
+
+            (sender, command.to_owned(), parameters.to_vec())
         };
 
-        let command = &m[1];
-        let parameters = &m[2..];
+        Message::new(sender, command, parameters)
+    }
 
-        (Some(sender), command.to_owned(), parameters.to_vec())
-    } else {
-        // PING-like message
-        let sender = None;
-        let command = &m[0];
-        let parameters = &m[1..];
+    fn parse_order(&self, message: Vec<String>) -> CommanderOrder {
+        let command = message[1].strip_prefix(':').unwrap().to_owned();
+        let parameters = &message[2..];
 
-        (sender, command.to_owned(), parameters.to_vec())
-    };
+        CommanderOrder {
+            command,
+            parameters: parameters.to_vec(),
+        }
+    }
 
-    Message::new(sender, command, parameters)
-}
+    pub async fn join(&mut self, channel: &str) {
+        self.send(format!("JOIN {}", channel).as_str()).await;
+    }
 
-fn parse_order(message: Vec<String>) -> CommanderOrder {
-    let command = message[1].strip_prefix(':').unwrap().to_owned();
-    let parameters = &message[2..];
-
-    CommanderOrder {
-        command,
-        parameters: parameters.to_vec(),
+    pub async fn part(&mut self, channel: &str) {
+        self.send(format!("PART {}", channel).as_str()).await;
     }
 }
 
+type AsyncCallback = Box<dyn for<'a> Fn(&'a mut Robot, String) -> BoxFuture<'a, ()>>;
+
+#[derive(Default)]
+pub struct AsyncCallbacks(HashMap<&'static str, AsyncCallback>);
+
+impl AsyncCallbacks {
+    pub fn insert<F>(&mut self, k: &'static str, f: F)
+    where
+        F: for<'a> Fn(&'a mut Robot, String) -> BoxFuture<'a, ()> + Send + 'static,
+    {
+        self.0.insert(k, Box::new(f));
+    }
+}
