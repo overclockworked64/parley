@@ -244,7 +244,7 @@ impl Robot {
     }
 }
 
-type AsyncCallback = Box<dyn for<'a> Fn(&'a mut Robot, String) -> BoxFuture<'a, ()>>;
+type AsyncCallback = Box<dyn Fn(&mut Robot, String) -> BoxFuture<'_, ()>>;
 
 #[derive(Default)]
 pub struct AsyncCallbacks(HashMap<&'static str, AsyncCallback>);
@@ -252,7 +252,7 @@ pub struct AsyncCallbacks(HashMap<&'static str, AsyncCallback>);
 impl AsyncCallbacks {
     pub fn insert<F>(&mut self, k: &'static str, f: F)
     where
-        F: for<'a> Fn(&'a mut Robot, String) -> BoxFuture<'a, ()> + Send + 'static,
+        F: Fn(&mut Robot, String) -> BoxFuture<'_, ()> + Send + 'static,
     {
         self.0.insert(k, Box::new(f));
     }
