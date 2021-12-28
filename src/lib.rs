@@ -40,13 +40,13 @@ struct CommanderOrder {
 }
 
 struct Message {
-    sender: Option<User>,
+    sender: User,
     command: String,
     parameters: Vec<String>,
 }
 
 impl Message {
-    fn new(sender: Option<User>, command: String, parameters: Vec<String>) -> Message {
+    fn new(sender: User, command: String, parameters: Vec<String>) -> Message {
         Message {
             sender,
             command,
@@ -93,13 +93,12 @@ impl Robot {
             .await;
     }
 
-    pub async fn send(&mut self, message: &str) {
-        let msg = format!("{}\r\n", message);
+    pub async fn join(&mut self, channel: &str) {
+        self.send(format!("JOIN {}", channel).as_str()).await;
+    }
 
-        match self.tx.as_mut().unwrap().write(msg.as_bytes()).await {
-            Ok(_) => {},
-            Err(e) => eprintln!("writing to stream failed: {}", e),
-        }
+    pub async fn part(&mut self, channel: &str) {
+        self.send(format!("PART {}", channel).as_str()).await;
     }
 
     pub async fn mainloop(&mut self) {
@@ -113,12 +112,12 @@ impl Robot {
 
                 let msg = self.parse_msg(message.clone());
 
-                if msg.sender.is_none() && msg.command == "PING" {
+                if msg.sender.is_server && msg.command == "PING" {
                     let reply = message.replace("PING", "PONG");
                     self.send(&reply).await;
                 }
 
-                if msg.sender == Some(self.commander.clone()) {
+                if msg.sender == self.commander {
                     let CommanderOrder {
                         command,
                         parameters,
@@ -134,6 +133,15 @@ impl Robot {
                     }
                 }
             }
+        }
+    }
+
+    async fn send(&mut self, message: &str) {
+        let msg = format!("{}\r\n", message);
+
+        match self.tx.as_mut().unwrap().write(msg.as_bytes()).await {
+            Ok(_) => {}
+            Err(e) => eprintln!("writing to stream failed: {}", e),
         }
     }
 
@@ -179,16 +187,14 @@ impl Robot {
             .collect::<Vec<String>>();
 
         let (sender, command, parameters) = if message.starts_with(':') {
-            // First parse the sender
             let sender = self.parse_sender(&m[0]);
-            
             let command = &m[1];
             let parameters = &m[2..];
-    
-            (Some(sender), command.to_owned(), parameters.to_vec())
+
+            (sender, command.to_owned(), parameters.to_vec())
         } else {
             // PING-like message
-            let sender = None;
+            let sender = User::new(None, None, None, true);
             let command = &m[0];
             let parameters = &m[1..];
 
@@ -236,17 +242,7 @@ impl Robot {
             parameters: parameters.to_vec(),
         }
     }
-
-    pub async fn join(&mut self, channel: &str) {
-        self.send(format!("JOIN {}", channel).as_str()).await;
-    }
-
-    pub async fn part(&mut self, channel: &str) {
-        self.send(format!("PART {}", channel).as_str()).await;
-    }
 }
-
-type AsyncCallback = fn(&mut Robot, Vec<String>) -> BoxFuture<'_, ()>;
 
 #[derive(Default)]
 pub struct AsyncCallbacks(HashMap<&'static str, AsyncCallback>);
@@ -260,3 +256,5 @@ impl AsyncCallbacks {
         self.0.get(k)
     }
 }
+
+type AsyncCallback = fn(&mut Robot, Vec<String>) -> BoxFuture<'_, ()>;
