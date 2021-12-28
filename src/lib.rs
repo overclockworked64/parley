@@ -58,13 +58,17 @@ impl Message {
 pub struct Robot {
     tx: Option<OwnedWriteHalf>,
     reader: Option<BufReader<OwnedReadHalf>>,
+    commander: User,
+    callbacks: Option<AsyncCallbacks>,
 }
 
 impl Robot {
-    pub fn new() -> Robot {
+    pub fn new(commander: User, callbacks: Option<AsyncCallbacks>) -> Robot {
         Robot {
             tx: None,
             reader: None,
+            commander,
+            callbacks,
         }
     }
 
@@ -98,7 +102,7 @@ impl Robot {
         }
     }
 
-    pub async fn mainloop(&mut self, callbacks: AsyncCallbacks, commander: User) {
+    pub async fn mainloop(&mut self) {
         let mut buf = vec![0u8; 8192];
 
         loop {
@@ -114,14 +118,19 @@ impl Robot {
                     self.send(&reply).await;
                 }
 
-                if msg.sender == Some(commander.clone()) {
+                if msg.sender == Some(self.commander.clone()) {
                     let CommanderOrder {
                         command,
                         parameters,
                     } = self.parse_order(msg.parameters);
 
-                    if let Some(callback) = callbacks.0.get(command.as_str()) {
-                        callback(self, parameters).await;            
+                    match self.callbacks.clone() {
+                        Some(callbacks) => {
+                            if let Some(callback) = callbacks.get(command.as_str()) {
+                                callback(self, parameters).await;
+                            }
+                        }
+                        None => {}
                     }
                 }
             }
@@ -235,16 +244,17 @@ impl Robot {
     }
 }
 
-type AsyncCallback = Box<dyn Fn(&mut Robot, Vec<String>) -> BoxFuture<'_, ()>>;
+type AsyncCallback = Box<fn(&mut Robot, Vec<String>) -> BoxFuture<'_, ()>>;
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct AsyncCallbacks(HashMap<&'static str, AsyncCallback>);
 
 impl AsyncCallbacks {
-    pub fn insert<F>(&mut self, k: &'static str, f: F)
-    where
-        F: Fn(&mut Robot, Vec<String>) -> BoxFuture<'_, ()> + Send + 'static,
-    {
-        self.0.insert(k, Box::new(f));
+    pub fn insert(&mut self, k: &'static str, f: AsyncCallback) {
+        self.0.insert(k, f);
+    }
+
+    pub fn get(&self, k: &str) -> Option<&AsyncCallback> {
+        self.0.get(k)
     }
 }
