@@ -124,7 +124,7 @@ impl Robot {
                         parameters,
                     } = self.parse_order(msg.parameters);
 
-                    match self.callbacks.clone() {
+                    match &self.callbacks {
                         Some(callbacks) => {
                             if let Some(callback) = callbacks.get(command.as_str()) {
                                 callback(self, parameters).await;
@@ -180,38 +180,11 @@ impl Robot {
 
         let (sender, command, parameters) = if message.starts_with(':') {
             // First parse the sender
-            let sender = &m[0];
-
-            let sender = if sender.contains('!') {
-                // The message contains '!', so we attempt to parse the nick, ident, and vhost
-                let s = sender
-                    .strip_prefix(':')
-                    .unwrap()
-                    .split('!')
-                    .map(|x| x.to_owned())
-                    .collect::<Vec<String>>();
-                /*
-                Now we have this:
-
-                    ["xvm`", "~xvm@user/xvm PRIVMSG toot :", "!join ##toottoot"]
-                */
-                let nick = &s[0];
-                let (ident, vhost) = s[1].split('@').collect_tuple().unwrap();
-
-                User::new(
-                    Some(nick.to_owned()),
-                    Some(ident.to_owned()),
-                    Some(vhost.to_owned()),
-                    false,
-                )
-            } else {
-                // The message does not contain '!', meaning it's from the server
-                User::new(None, None, None, true)
-            };
-
+            let sender = self.parse_sender(&m[0]);
+            
             let command = &m[1];
             let parameters = &m[2..];
-
+    
             (Some(sender), command.to_owned(), parameters.to_vec())
         } else {
             // PING-like message
@@ -223,6 +196,35 @@ impl Robot {
         };
 
         Message::new(sender, command, parameters)
+    }
+
+    fn parse_sender(&self, sender: &str) -> User {
+        if sender.contains('!') {
+            // The message contains '!', so we attempt to parse the nick, ident, and vhost
+            let s = sender
+                .strip_prefix(':')
+                .unwrap()
+                .split('!')
+                .map(|x| x.to_owned())
+                .collect::<Vec<String>>();
+            /*
+            Now we have this:
+
+                ["xvm`", "~xvm@user/xvm PRIVMSG toot :", "!join ##toottoot"]
+            */
+            let nick = &s[0];
+            let (ident, vhost) = s[1].split('@').collect_tuple().unwrap();
+
+            User::new(
+                Some(nick.to_owned()),
+                Some(ident.to_owned()),
+                Some(vhost.to_owned()),
+                false,
+            )
+        } else {
+            // The message does not contain '!', meaning it's from the server
+            User::new(None, None, None, true)
+        }
     }
 
     fn parse_order(&self, message: Vec<String>) -> CommanderOrder {
@@ -244,9 +246,9 @@ impl Robot {
     }
 }
 
-type AsyncCallback = Box<fn(&mut Robot, Vec<String>) -> BoxFuture<'_, ()>>;
+type AsyncCallback = fn(&mut Robot, Vec<String>) -> BoxFuture<'_, ()>;
 
-#[derive(Default, Clone)]
+#[derive(Default)]
 pub struct AsyncCallbacks(HashMap<&'static str, AsyncCallback>);
 
 impl AsyncCallbacks {
