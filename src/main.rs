@@ -13,7 +13,7 @@ async fn on_command(bot: &mut parley::Robot, params: Vec<String>) {
 #[tokio::main]
 async fn main() {
     let mut callbacks = parley::AsyncCallbacks::default();
-    callbacks.insert("!join", |bot, param| Box::pin(on_command(bot, param)));
+    callbacks.insert("!join", |bot, params| Box::pin(on_command(bot, params)));
 
     let commander = parley::User::new(
         Some("adder".to_string()),
